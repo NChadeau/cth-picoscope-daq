@@ -22,6 +22,6 @@
 			./analysis analyse reproducibility yyyy-mm-dd MPPC1-MPPC2-MPPC3 /path/to/file path/to/where_to_be_saved
 		* To test position dependency (in progress...)
 			./analysis analyse position_dependency yyyy-mm-dd MPPC1-MPPC2-MPPC3 /path/to/file path/to/where_to_be_saved
-		* Final Quality Contraol (in progress...)
+		* Final Quality Control (in progress...)
 			./analysis analyse QC yyyy-mm-dd MPPC1-MPPC2-MPPC3 /path/to/file path/to/where_to_be_saved
 
