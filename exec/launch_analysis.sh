@@ -12,11 +12,11 @@ all_dates=('2024-07-30')
 all_mppcs=('1-2-3')
 
 ### Different configurations for differente analysis
-# maxPMT vs PMT V  and maxMPPC vs LED V
-#max_dates=('2024-07-25')
-#max_mppcs=('1-2-3' '4-5-6' '7-8-9' '10-1-2')
-max_dates=('2024-07-30')
-max_mppcs=('1-2-3')
+# meanPMT and meanMPPC vs LED V
+#mean_dates=('2024-07-25')
+#mean_mppcs=('1-2-3' '4-5-6' '7-8-9' '10-1-2')
+mean_dates=('2024-07-30')
+mean_mppcs=('1-2-3')
 # repetability 
 rep_dates=('2024-07-23')
 rep_mppcs=('1-2-3')
@@ -51,11 +51,11 @@ if [ ${what} == "pre-analyse" ]; then
 		done
 	done
 elif [ ${what} == "analyse" ]; then
-	read -p  "Which analysis do you want to perform: 'maxPMT-maxMPPC', 'reproducibility', 'position_dependency' or 'QC'? " analysis_type
-		if [ ${analysis_type} == "maxPMT-maxMPPC" ]; then
-			for date in "${max_dates[@]}"
+	read -p  "Which analysis do you want to perform: 'meanPMT-meanMPPC', 'reproducibility', 'position_dependency' or 'QC'? " analysis_type
+		if [ ${analysis_type} == "meanPMT-meanMPPC" ]; then
+			for date in "${mean_dates[@]}"
 			do
-				for mppcs in "${max_mppcs[@]}"
+				for mppcs in "${mean_mppcs[@]}"
 				do
 					./analysis ${what} ${analysis_type} ${date} ${mppcs} ${analyse_input_dir} ${analyse_output_dir}
 				done

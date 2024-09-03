@@ -16,8 +16,8 @@
 	- Launch a pre-analysis:
 		./analysis pre-analyse yyyy-mm-dd MPPC1-MPPC2-MPPC3 /path/to/file path/to/where_to_be_saved
 	- Launch analysises:
-		* To have MEAN MPPC response and MEAN PMT response versus LED voltage
-			./analysis analyse maxMPPC-maxPMT yyyy-mm-dd MPPC1-MPPC2-MPPC3 /path/to/file path/to/where_to_be_saved
+		* To have mean MPPC response and mean PMT response versus LED voltage
+			./analysis analyse meanMPPC-meanPMT yyyy-mm-dd MPPC1-MPPC2-MPPC3 /path/to/file path/to/where_to_be_saved
 		* To test reproducibility (in progress...)
 			./analysis analyse reproducibility yyyy-mm-dd MPPC1-MPPC2-MPPC3 /path/to/file path/to/where_to_be_saved
 		* To test position dependency (in progress...)

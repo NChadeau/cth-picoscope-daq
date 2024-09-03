@@ -958,7 +958,7 @@ int main(int argc, char **argv)
 						TString name("meanMPPCvsLEDV_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1] + "_ch" + ch);
 						TH1D *meanMPPCvsLEDV = new TH1D();
 						meanMPPCvsLEDV->SetName(name);
-						meanMPPCvsLEDV->SetTitle(";U_{LED} [mV];mean_{MPPC} [mV]");
+						meanMPPCvsLEDV->SetTitle(";U_{LED} [mV];{#bar U}_{MPPC} [mV]");
 						meanMPPCvsLEDV->SetBins(100, 800, 900);
 						meanMPPCvsLEDVVec.push_back(meanMPPCvsLEDV);
 						name = "meanMPPCvsLEDVNorm_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1] + "_ch" + ch;
@@ -974,7 +974,7 @@ int main(int argc, char **argv)
 								TString name("meanPMTvsPMTV_" + date + "_" + MPPCsHV[i0] + "_" + LEDV[i3] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1]);
 								TH1D *meanPMTvsPMTV = new TH1D();
 								meanPMTvsPMTV->SetName(name);
-								meanPMTvsPMTV->SetTitle(";U_{PMT} [kV];mean_{PMT} [mV]");
+								meanPMTvsPMTV->SetTitle(";U_{PMT} [kV];{#bar U}_{PMT} [mV]");
 								meanPMTvsPMTV->SetBins(300, 1.2, 1.5);
 								meanPMTvsPMTVVec.push_back(meanPMTvsPMTV);
 							}
@@ -1061,7 +1061,7 @@ int main(int argc, char **argv)
 									{
 										std::string pmtVoltage(PMTV[i3]);
 										pmtVoltage.erase(pmtVoltage.end() - 2, pmtVoltage.end());
-										meanPMTvsPMTVVec[i2]->Fill(std::stod(pmtVoltage), meanimumX);
+										meanPMTvsPMTVVec[i2]->Fill(std::stod(pmtVoltage), mean);
 									} /*else{
 										 std::cout<<"WARNING: no mean found in the integrated charge distribution for file '"<<date+"_"+MPPCsHV[i0]+"_"+LEDV[i2]+"_"+PMTV[i3]+"_"+MPPCsNumbers+"_"+picoscopeNames[i1]<<".root'..."<<std::endl;
 									 }*/
@@ -1092,7 +1092,7 @@ int main(int argc, char **argv)
 						THStack *meanPMTvsPMTV = new THStack();
 						TString name("meanPMTvsPMTV_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1]);
 						meanPMTvsPMTV->SetName(name);
-						meanPMTvsPMTV->SetTitle(";U_{PMT} [kV];mean_{PMT}");
+						meanPMTvsPMTV->SetTitle(";U_{PMT} [kV];{#bar U}_{PMT}");
 						for (int i2(0); i2 < (int)meanPMTvsPMTVVec.size(); ++i2)
 						{
 							for (int i3(1); i3 <= meanPMTvsPMTVVec[i2]->GetNbinsX(); ++i3)
