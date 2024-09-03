@@ -914,7 +914,7 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		std::string analysisSubType(argv[2]);
-		if (analysisSubType == "maxPMT-maxMPPC")
+		if (analysisSubType == "meanPMT-meanMPPC")
 		{
 			std::string date(argv[3]);
 			std::string MPPCsNumbers(argv[4]);
@@ -925,7 +925,7 @@ int main(int argc, char **argv)
 				for (int i1(0); i1 < (int)picoscopeNames.size(); ++i1)
 				{
 					clock_t startTime, endTime;
-					std::cout << "\n######### Starting analysis: PMT maximum VS PMT voltage & MPPCs maximum VS LED voltage" << std::endl;
+					std::cout << "\n######### Starting analysis: PMT mean VS PMT voltage & MPPCs mean VS LED voltage" << std::endl;
 					startTime = clock();
 					std::cout << "###### Starting setting up histograms..." << std::endl;
 					std::vector<std::vector<std::vector<TH1D *>>> integratedChargeTensor;
@@ -949,34 +949,34 @@ int main(int argc, char **argv)
 						}
 						integratedChargeTensor.push_back(integratedChargeMatrix);
 					}
-					std::vector<TH1D *> maxMPPCvsLEDVVec;
-					std::vector<TH1D *> maxMPPCvsLEDVVecNorm;
-					std::vector<TH1D *> maxPMTvsPMTVVec;
+					std::vector<TH1D *> meanMPPCvsLEDVVec;
+					std::vector<TH1D *> meanMPPCvsLEDVVecNorm;
+					std::vector<TH1D *> meanPMTvsPMTVVec;
 					for (int i2(0); i2 < 4; ++i2)
 					{
 						std::string ch(std::string(1, 'A' + i2));
-						TString name("maxMPPCvsLEDV_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1] + "_ch" + ch);
-						TH1D *maxMPPCvsLEDV = new TH1D();
-						maxMPPCvsLEDV->SetName(name);
-						maxMPPCvsLEDV->SetTitle(";U_{LED} [mV];max_{MPPC} [mV]");
-						maxMPPCvsLEDV->SetBins(100, 800, 900);
-						maxMPPCvsLEDVVec.push_back(maxMPPCvsLEDV);
-						name = "maxMPPCvsLEDVNorm_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1] + "_ch" + ch;
-						TH1D *maxMPPCvsLEDVNorm = new TH1D();
-						maxMPPCvsLEDVNorm->SetName(name);
-						maxMPPCvsLEDVNorm->SetTitle(";U_{LED} [mV];count");
-						maxMPPCvsLEDVNorm->SetBins(100, 800, 900);
-						maxMPPCvsLEDVVecNorm.push_back(maxMPPCvsLEDVNorm);
+						TString name("meanMPPCvsLEDV_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1] + "_ch" + ch);
+						TH1D *meanMPPCvsLEDV = new TH1D();
+						meanMPPCvsLEDV->SetName(name);
+						meanMPPCvsLEDV->SetTitle(";U_{LED} [mV];mean_{MPPC} [mV]");
+						meanMPPCvsLEDV->SetBins(100, 800, 900);
+						meanMPPCvsLEDVVec.push_back(meanMPPCvsLEDV);
+						name = "meanMPPCvsLEDVNorm_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1] + "_ch" + ch;
+						TH1D *meanMPPCvsLEDVNorm = new TH1D();
+						meanMPPCvsLEDVNorm->SetName(name);
+						meanMPPCvsLEDVNorm->SetTitle(";U_{LED} [mV];count");
+						meanMPPCvsLEDVNorm->SetBins(100, 800, 900);
+						meanMPPCvsLEDVVecNorm.push_back(meanMPPCvsLEDVNorm);
 						if (i2 == 3)
 						{
 							for (int i3(0); i3 < (int)LEDV.size(); ++i3)
 							{
-								TString name("maxPMTvsPMTV_" + date + "_" + MPPCsHV[i0] + "_" + LEDV[i3] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1]);
-								TH1D *maxPMTvsPMTV = new TH1D();
-								maxPMTvsPMTV->SetName(name);
-								maxPMTvsPMTV->SetTitle(";U_{PMT} [kV];max_{PMT} [mV]");
-								maxPMTvsPMTV->SetBins(300, 1.2, 1.5);
-								maxPMTvsPMTVVec.push_back(maxPMTvsPMTV);
+								TString name("meanPMTvsPMTV_" + date + "_" + MPPCsHV[i0] + "_" + LEDV[i3] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1]);
+								TH1D *meanPMTvsPMTV = new TH1D();
+								meanPMTvsPMTV->SetName(name);
+								meanPMTvsPMTV->SetTitle(";U_{PMT} [kV];mean_{PMT} [mV]");
+								meanPMTvsPMTV->SetBins(300, 1.2, 1.5);
+								meanPMTvsPMTVVec.push_back(meanPMTvsPMTV);
 							}
 						}
 					}
@@ -1013,13 +1013,13 @@ int main(int argc, char **argv)
 								tree->SetBranchAddress("channel", &channel);
 								tree->SetBranchAddress("integratedCharge", &integratedCharge);
 								Long64_t nRows(tree->GetEntries());
-								double maxIntegratedCharge(0), minIntegratedCharge(0);
+								double meanIntegratedCharge(0), minIntegratedCharge(0);
 								for (int i4(0); i4 < nRows; ++i4)
 								{
 									tree->GetEntry(i4);
-									if (integratedCharge > maxIntegratedCharge)
+									if (integratedCharge > meanIntegratedCharge)
 									{
-										maxIntegratedCharge = integratedCharge;
+										meanIntegratedCharge = integratedCharge;
 									}
 									if (integratedCharge < minIntegratedCharge)
 									{
@@ -1028,7 +1028,7 @@ int main(int argc, char **argv)
 								}
 								for (int i4(0); i4 < 4; ++i4)
 								{
-									integratedChargeTensor[i2][i3][i4]->SetBins(300, minIntegratedCharge, maxIntegratedCharge);
+									integratedChargeTensor[i2][i3][i4]->SetBins(300, minIntegratedCharge, meanIntegratedCharge);
 								}
 								for (int i4(0); i4 < nRows; ++i4)
 								{
@@ -1048,78 +1048,71 @@ int main(int argc, char **argv)
 							{
 								for (int i4(0); i4 < 4; ++i4)
 								{
-									// double maximumY(0);
-									double maximumX(0);
-									/*for(int i5(1); i5<=integratedChargeTensor[i2][i3][i4]->GetNbinsX(); ++i5){
-										if(maximumY < integratedChargeTensor[i2][i3][i4]->GetBinContent(i5)){
-											maximumY = integratedChargeTensor[i2][i3][i4]->GetBinContent(i5);
-											maximumX = integratedChargeTensor[i2][i3][i4]->GetXaxis()->GetBinCenter(i5);
-										}
-									}*/
-									maximumX = integratedChargeTensor[i2][i3][i4]->GetMean();
+									double mean(0);
+									mean = integratedChargeTensor[i2][i3][i4]->GetMean();
 									if (LEDV[i2] != "Dark")
 									{
 										std::string ledVoltage(LEDV[i2]);
 										ledVoltage.erase(ledVoltage.end() - 2, ledVoltage.end());
-										maxMPPCvsLEDVVec[i4]->Fill(std::stod(ledVoltage), maximumX);
-										maxMPPCvsLEDVVecNorm[i4]->Fill(std::stod(ledVoltage));
+										meanMPPCvsLEDVVec[i4]->Fill(std::stod(ledVoltage), mean);
+										meanMPPCvsLEDVVecNorm[i4]->Fill(std::stod(ledVoltage));
 									}
 									if (LEDV[i2] != "Dark" && i4 == 3)
 									{
 										std::string pmtVoltage(PMTV[i3]);
 										pmtVoltage.erase(pmtVoltage.end() - 2, pmtVoltage.end());
-										maxPMTvsPMTVVec[i2]->Fill(std::stod(pmtVoltage), maximumX);
+										meanPMTvsPMTVVec[i2]->Fill(std::stod(pmtVoltage), meanimumX);
 									} /*else{
-										 std::cout<<"WARNING: no maximum found in the integrated charge distribution for file '"<<date+"_"+MPPCsHV[i0]+"_"+LEDV[i2]+"_"+PMTV[i3]+"_"+MPPCsNumbers+"_"+picoscopeNames[i1]<<".root'..."<<std::endl;
+										 std::cout<<"WARNING: no mean found in the integrated charge distribution for file '"<<date+"_"+MPPCsHV[i0]+"_"+LEDV[i2]+"_"+PMTV[i3]+"_"+MPPCsNumbers+"_"+picoscopeNames[i1]<<".root'..."<<std::endl;
 									 }*/
 								}
 							}
 						}
 						std::cout << "###### Finished plotting analysis histograms..." << std::endl;
 						std::cout << "###### Starting saving..." << std::endl;
-						for (int i2(0); i2 < (int)maxMPPCvsLEDVVec.size(); ++i2)
+						for (int i2(0); i2 < (int)meanMPPCvsLEDVVec.size(); ++i2)
 						{
-							maxMPPCvsLEDVVec[i2]->Divide(maxMPPCvsLEDVVec[i2], maxMPPCvsLEDVVecNorm[i2], 1, 1);
-							for (int i3(1); i3 <= maxMPPCvsLEDVVec[i2]->GetNbinsX(); ++i3)
+							meanMPPCvsLEDVVec[i2]->Divide(meanMPPCvsLEDVVec[i2], meanMPPCvsLEDVVecNorm[i2], 1, 1);
+							for (int i3(1); i3 <= meanMPPCvsLEDVVec[i2]->GetNbinsX(); ++i3)
 							{
-								maxMPPCvsLEDVVec[i2]->SetBinError(i3, 0.01 * maxMPPCvsLEDVVec[i2]->GetBinContent(i3));
+								meanMPPCvsLEDVVec[i2]->SetBinError(i3, 0.01 * meanMPPCvsLEDVVec[i2]->GetBinContent(i3));
 							}
 							TString outputDirectory(directory1);
-							TString name(maxMPPCvsLEDVVec[i2]->GetName());
+							TString name(meanMPPCvsLEDVVec[i2]->GetName());
 							TString pdfFile(name + ".pdf");
 							TCanvas *Ctmp = new TCanvas("temp", "temp", 100, 100);
 							Ctmp->SaveAs(outputDirectory + pdfFile + "[");
 							saveInPDF(outputDirectory, pdfFile,
-									  drawCanvas(maxMPPCvsLEDVVec[i2]->GetName(), maxMPPCvsLEDVVec[i2],
-												 maxMPPCvsLEDVVec[i2]->GetName()),
+									  drawCanvas(meanMPPCvsLEDVVec[i2]->GetName(), meanMPPCvsLEDVVec[i2],
+												 meanMPPCvsLEDVVec[i2]->GetName()),
 									  "logNot");
 							Ctmp->SaveAs(outputDirectory + pdfFile + "]");
 							delete Ctmp;
 						}
-						THStack *maxPMTvsPMTV = new THStack();
-						TString name("maxPMTvsPMTV_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1]);
-						maxPMTvsPMTV->SetName(name);
-						maxPMTvsPMTV->SetTitle(";U_{PMT} [kV];max_{PMT}");
-						for (int i2(0); i2 < (int)maxPMTvsPMTVVec.size(); ++i2)
+						THStack *meanPMTvsPMTV = new THStack();
+						TString name("meanPMTvsPMTV_" + date + "_" + MPPCsHV[i0] + "_" + MPPCsNumbers + "_" + picoscopeNames[i1]);
+						meanPMTvsPMTV->SetName(name);
+						meanPMTvsPMTV->SetTitle(";U_{PMT} [kV];mean_{PMT}");
+						for (int i2(0); i2 < (int)meanPMTvsPMTVVec.size(); ++i2)
 						{
-							for (int i3(1); i3 <= maxPMTvsPMTVVec[i2]->GetNbinsX(); ++i3)
+							for (int i3(1); i3 <= meanPMTvsPMTVVec[i2]->GetNbinsX(); ++i3)
 							{
-								maxPMTvsPMTVVec[i2]->SetBinError(i3, 0.05 * maxPMTvsPMTVVec[i2]->GetBinContent(i3));
-								if (maxPMTvsPMTVVec[i2]->GetBinContent(i3) != 0)
+								meanPMTvsPMTVVec[i2]->SetBinError(i3, 0.05 * meanPMTvsPMTVVec[i2]->GetBinContent(i3));
+								if (meanPMTvsPMTVVec[i2]->GetBinContent(i3) != 0)
 								{
-									std::cout << maxPMTvsPMTVVec[i2]->GetBinContent(i3) << " / ";
+									std::cout << meanPMTvsPMTVVec[i2]->GetBinContent(i3) << " / ";
 								}
 							}
 							std::cout << std::endl;
-							maxPMTvsPMTV->Add(maxPMTvsPMTVVec[i2]);
+							meanPMTvsPMTV->Add(meanPMTvsPMTVVec[i2]);
 						}
 						TString outputDirectory(directory1);
 						TString pdfFile(name + ".pdf");
 						TCanvas *Ctmp = new TCanvas("temp", "temp", 100, 100);
 						Ctmp->SaveAs(outputDirectory + pdfFile + "[");
 						saveInPDF(outputDirectory, pdfFile,
-								  drawStackCanvas(maxPMTvsPMTV->GetName(), maxPMTvsPMTV,
-												  maxPMTvsPMTV->GetName()),
+								  drawStackCanvas(meanPMTvsPMTV->GetName(), meanPMTvsPMTV,
+												  meanPMTvsPMTV->GetName()),
 								  "logNot");
 						Ctmp->SaveAs(outputDirectory + pdfFile + "]");
 						delete Ctmp;
@@ -1149,14 +1142,13 @@ int main(int argc, char **argv)
 		}
 		else if (analysisSubType == "QC")
 		{
-			std::cout << "Sorry this is not supported yet..." << std::endl;
 			std::string datesList(argv[3]);
 			std::string MPPCsNumbersList(argv[4]);
 			std::string directory0(argv[5]);
 			std::string directory1(argv[6]);
 			std::vector<std::string> dates;
 			std::vector<std::string> mppcs;
-			std::vector<TH2D *> maxMPPCvsmaxPMT;
+			std::vector<TH2D *> meanMPPCvsmeanPMT;
 			for (int i0(0); i0 < (int)dates.size(); ++i0)
 			{
 				for (int i1(0); i1 < (int)MPPCsHV.size(); ++i1)
@@ -1179,7 +1171,7 @@ int main(int argc, char **argv)
 		else
 		{
 			std::cout << "Analysis type: " << analysisSubType << " is not a valid type" << std::endl;
-			std::cout << "Valid analysis types: analyse <maxPMT-maxMPPC | reproducibility"
+			std::cout << "Valid analysis types: analyse <meanPMT-meanMPPC | reproducibility"
 					  << " | position_dependency | temperature_dependency | QC>" << std::endl;
 		}
 	}
