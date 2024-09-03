@@ -17,9 +17,6 @@
 
 using namespace std;
 namespace py = pybind11;
-// constexpr auto byref = py::return_value_policy::reference_internal;
-
-// typedef enum enBOOL{FALSE,TRUE} BOOL;
 
 class dataCollectionConfig 
 {
@@ -37,7 +34,11 @@ public:
     uint16_t samplesPreTrigger;
     uint32_t numWaveforms;
     vector<vector<int16_t*>> dataBuffers;
-    char serial[16];
+
+    BOOL dataConfigured = FALSE;
+    BOOL unitInitialised = FALSE;
+
+    char serial[32];
     dataCollectionConfig(UNIT *unit, char *serial)
     {
         this->unit = unit;
@@ -45,7 +46,17 @@ public:
     }
 };
 
-dataCollectionConfig g_dcc(NULL, (char*) "");
+bool isLittleEndian()
+{
+    uint32_t i = 1;
+    char *c = (char*)&i;
+    return bool(*c);
+}
+
+bool g_littleEndian = isLittleEndian();
+
+UNIT g_unit;
+dataCollectionConfig g_dcc(&g_unit, (char*) "");
 
 void setActiveChannels(dataCollectionConfig &dcc, 
                        int16_t aChVoltage,
@@ -89,17 +100,19 @@ void setTriggerConfig(dataCollectionConfig &dcc,
                                 auxTrigVoltageMv
                                 };
 
+    vector<int16_t> chTriggerThresholdADC;
+
     for (int i = 0; i < 4; i++)
     {
         if (trigVoltageMv[i] != 0 && dcc.activeChannels.test(i))
         {
             dcc.activeTriggers.set(i + 1);
-            dcc.chTriggerThresholdADC.push_back(mv_to_adc(trigVoltageMv[i], 
+            chTriggerThresholdADC.push_back(mv_to_adc(trigVoltageMv[i], 
             dcc.unit->channelSettings[PS6000_CHANNEL_A + i].range));
         }
         else
         {
-            dcc.chTriggerThresholdADC.push_back(0);
+            chTriggerThresholdADC.push_back(0);
         }
     }
     if (trigVoltageMv[4] != 0)
@@ -113,6 +126,7 @@ void setTriggerConfig(dataCollectionConfig &dcc,
         dcc.auxTriggerThresholdADC = 0;
     }
 
+    dcc.chTriggerThresholdADC = chTriggerThresholdADC;
     SetTriggers(dcc.unit, dcc.activeTriggers, dcc.chTriggerThresholdADC, dcc.auxTriggerThresholdADC);
 
     return;
@@ -126,15 +140,32 @@ void setDataConfig(dataCollectionConfig &dcc, uint8_t *timebase,
     dcc.numWaveforms = *numWaveforms;
     dcc.samplesPreTrigger = *samplesPreTrigger;
 
-    vector<uint16_t> samplesPerWaveform = {*chAWfSamples, *chBWfSamples, *chCWfSamples, *chDWfSamples};
-    dcc.chPostSamplesPerWaveform = samplesPerWaveform;
+    vector<uint16_t> samplesPostPerWaveform = {*chAWfSamples, *chBWfSamples, *chCWfSamples, *chDWfSamples};
+    dcc.chPostSamplesPerWaveform = samplesPostPerWaveform;
     dcc.maxPostSamples = *max_element(  dcc.chPostSamplesPerWaveform.begin(),
                                         dcc.chPostSamplesPerWaveform.end());
 
-    dcc.dataBuffers = SetDataBuffers(dcc.unit, dcc.activeChannels, samplesPerWaveform, 
-            *samplesPreTrigger, *numWaveforms, dcc.maxPostSamples);
+    dcc.dataBuffers = SetDataBuffers(dcc.unit, dcc.activeChannels, dcc.chPostSamplesPerWaveform, 
+            dcc.samplesPreTrigger, dcc.numWaveforms, dcc.maxPostSamples);
 
     return;
+}
+
+void freeDataBuffers(dataCollectionConfig &dcc)
+{
+    for (int i = 0; i < dcc.activeChannels.count(); i++)
+    {
+        for (int j = 0; j < dcc.numWaveforms; j++)
+        {
+            free(dcc.dataBuffers.at(i).at(j));
+        }
+    }
+}
+
+void resetDataBuffers(dataCollectionConfig &dcc)
+{
+    dcc.dataBuffers = SetDataBuffers(dcc.unit, dcc.activeChannels, dcc.chPostSamplesPerWaveform, 
+            dcc.samplesPreTrigger, dcc.numWaveforms, dcc.maxPostSamples);
 }
 
 void collectRapidBlockData(dataCollectionConfig &dcc)
@@ -152,34 +183,33 @@ void setDataOutput(dataCollectionConfig &dcc, char *outputFileName)
     return;
 }
 
-bool isLittleEndian()
+void closeDataOutput(dataCollectionConfig &dcc)
 {
-    uint32_t i = 1;
-    char *c = (char*)&i;
-    return bool(*c);
+    dcc.ostream.close();
+    return;
 }
 
 int16_t bswap16(int16_t n)
 {
-    if (isLittleEndian()) {return __builtin_bswap16(n);}
+    if (g_littleEndian) {return __builtin_bswap16(n);}
     else {return n;}
 }
 
 uint16_t bswapu16(uint16_t n)
 {
-    if (isLittleEndian()) {return __builtin_bswap16(n);}
+    if (g_littleEndian) {return __builtin_bswap16(n);}
     else {return n;}
 }
 
 int32_t bswap32(int32_t n)
 {
-    if (isLittleEndian()) {return __builtin_bswap32(n);}
+    if (g_littleEndian) {return __builtin_bswap32(n);}
     else {return n;}
 }
 
 uint32_t bswapu32(uint32_t n)
 {
-    if (isLittleEndian()) {return __builtin_bswap32(n);}
+    if (g_littleEndian) {return __builtin_bswap32(n);}
     else {return n;}
 }
 
@@ -197,21 +227,23 @@ void bitset_reverse(std::bitset<N> &b)
 
 void writeDataHeader(dataCollectionConfig &dcc)
 {
-    // Bit layout, in order
-    // 4 bits: timebase (from 0-4 for ps6000)
-    // 4 bits: ch1-4 active
-    // 3 bits: padding
-    // 5 bits: ch1-4, aux trigger active
-    // 16 bits: aux trigger threshold
-    // 64 (16*4) bits: trigger threshold (ch1-4)
-    // 16 (4*4): ch1-4 voltage ranges (aux is always +-1V range)
-    // 64 (4*16) bits: number of TOTAL samples per waveform (including pretrigger)
-    // 16 bits: number of samples before trigger
-    // 32 bits: number of waveforms
-    // 32 bits: unix timestamp (signed integer)
-    // total above bits: 232 (29 bytes)
-    // Flexible length, 0 terminated: model string
-    // Flexible length, 0 terminated: serial number
+    /*
+     * Bit layout, in order
+     * 4 bits: timebase (from 0-4 for ps6000)
+     * 4 bits: ch1-4 active
+     * 3 bits: padding
+     * 5 bits: ch1-4, aux trigger active
+     * 16 bits: aux trigger threshold
+     * 64 (16*4) bits: trigger threshold (ch1-4)
+     * 16 (4*4): ch1-4 voltage ranges (aux is always +-1V range)
+     * 64 (4*16) bits: number of TOTAL samples per waveform (including pretrigger)
+     * 16 bits: number of samples before trigger
+     * 32 bits: number of waveforms
+     * 32 bits: unix timestamp (signed integer)
+     * total above bits: 232 (29 bytes)
+     * Flexible length, 0 terminated: model string
+     * Flexible length, 0 terminated: serial number
+    */
 
     int16_t o16;
     uint16_t ou16;
@@ -227,6 +259,9 @@ void writeDataHeader(dataCollectionConfig &dcc)
 
     uint8_t activeTriggers = (uint8_t) dcc.activeTriggers.to_ullong();
     dcc.ostream.write((const char *) &activeTriggers, sizeof(uint8_t));
+
+    bitset_reverse(dcc.activeChannels);
+    bitset_reverse(dcc.activeTriggers);
 
     o16 = bswap16(dcc.auxTriggerThresholdADC);
     dcc.ostream.write((const char *) &o16, sizeof(int16_t));
@@ -262,10 +297,11 @@ void writeDataHeader(dataCollectionConfig &dcc)
         if (dcc.unit->modelString[i] == '\0') {break;}
     }
 
-    dcc.ostream.write((const char *) &dcc.serial, sizeof(&dcc.serial));
-
-    char zero = '\0';
-    dcc.ostream.write(&zero, 1L);
+    for (int i = 0; i < sizeof(dcc.serial); i++)
+    {
+        dcc.ostream.write((const char *) &dcc.serial[i], 1L);
+        if (dcc.unit->serial[i] == '\0') {break;}
+    }
 
     return;
 }
@@ -289,26 +325,26 @@ void writeDataOut(dataCollectionConfig &dcc)
                 o16 = bswap16((dcc.dataBuffers.at(i).at(j))[k]);
                 dcc.ostream.write((const char*) &o16, s);
             }
-            free(dcc.dataBuffers.at(i).at(j));
         }
     }
 }
 
 int seriesInitDaq(char *serial)
 {
-    UNIT *unit;
     if (serial == "") {serial = NULL;}
-    findUnit(unit, (int8_t*) serial);
+    findUnit(g_dcc.unit, (int8_t*) serial);
     try
     {
-        g_dcc.unit = unit;
         strcpy(g_dcc.serial, serial);
+        g_dcc.unitInitialised = TRUE;
     }
     catch (exception e)
     {
         printf("Final Catch\n");
         printf("Caught: %s\n", e.what());
-        CloseDevice(unit);
+        CloseDevice(g_dcc.unit);
+        g_dcc.unitInitialised = FALSE;
+        g_dcc.dataConfigured = FALSE;
         throw e;
     }
     return 1;
@@ -322,25 +358,71 @@ int seriesSetDaqSettings(
             int16_t auxTrigger, uint8_t timebase,
             uint32_t numWaveforms, uint16_t samplesPreTrigger)
 {
-    setActiveChannels(g_dcc, chAVRange, chBVRange, chCVRange, chDVRange);
-    setTriggerConfig(g_dcc, chATrigger, chBTrigger, chCTrigger, chDTrigger, auxTrigger);
-    setDataConfig(g_dcc, &timebase, &numWaveforms, &samplesPreTrigger, 
+    if (g_dcc.unitInitialised == FALSE)
+    {
+        return 0;
+    }
+    try
+    {
+        setActiveChannels(g_dcc, chAVRange, chBVRange, chCVRange, chDVRange);
+        setTriggerConfig(g_dcc, chATrigger, chBTrigger, chCTrigger, chDTrigger, auxTrigger);
+        setDataConfig(g_dcc, &timebase, &numWaveforms, &samplesPreTrigger, 
                 &chAWfSamples, &chBWfSamples, &chCWfSamples, &chDWfSamples);
+        g_dcc.dataConfigured = TRUE;
+    }
+    catch (exception e)
+    {
+        printf("Final Catch\n");
+        printf("Caught: %s\n", e.what());
+        CloseDevice(g_dcc.unit);
+        g_dcc.unitInitialised = FALSE;
+        g_dcc.dataConfigured = FALSE;
+        throw e;
+    }
     return 1;
 }
 
 int seriesCollectData(char *outputFile)
 {
-    collectRapidBlockData(g_dcc);
-    setDataOutput(g_dcc, outputFile);
-    writeDataHeader(g_dcc);
-    writeDataOut(g_dcc);
-    return 1;
+    if ((g_dcc.unitInitialised == FALSE) || (g_dcc.dataConfigured = FALSE))
+    {
+        return 0;
+    }
+    try
+    {
+        collectRapidBlockData(g_dcc);
+        setDataOutput(g_dcc, outputFile);
+        writeDataHeader(g_dcc);
+        writeDataOut(g_dcc);
+        closeDataOutput(g_dcc);
+        printf("Written to file: %s\n", outputFile);
+        resetDataBuffers(g_dcc);
+        printf("Daq finished\n\n");
+        return 1;
+    }
+    catch (exception e)
+    {
+        printf("Final Catch\n");
+        printf("Caught: %s\n", e.what());
+        CloseDevice(g_dcc.unit);
+        g_dcc.unitInitialised = FALSE;
+        g_dcc.dataConfigured = FALSE;
+        throw e;
+    }
 }
 
 int seriesCloseDaq()
 {
-    CloseDevice(g_dcc.unit);
+    if (g_dcc.unitInitialised)
+    {
+        CloseDevice(g_dcc.unit);
+        g_dcc.unitInitialised = FALSE;
+    }
+    if (g_dcc.dataConfigured)
+    {
+        freeDataBuffers(g_dcc);
+        g_dcc.dataConfigured = FALSE;
+    }
     return 1;
 }
 
@@ -368,6 +450,7 @@ int runFullDAQ(char *outputFile,
         setDataOutput(dcc, outputFile);
         writeDataHeader(dcc);
         writeDataOut(dcc);
+        closeDataOutput(dcc);
         printf("Data written to %s\n", outputFile);
         CloseDevice(unit);
         printf("Device closed\n");
@@ -394,15 +477,38 @@ char* getSerials()
     return out;
 }
 
+int runFunctionGenerator(uint32_t PeakValue, double Width)
+{
+    if (g_dcc.unitInitialised == FALSE)
+    {
+        return 0;
+    }
+    PicoSquarePulseGen(&g_unit, PeakValue, Width);
+    return 1;
+}
+
+int clearFunctionGenerator()
+{
+    if (g_dcc.unitInitialised == FALSE)
+    {
+        return 0;
+    }
+    ClearPulseGen(&g_unit);
+    return 1;
+}
+
 PYBIND11_MODULE(daq6000, m)
 {
     m.doc() = "Picoscope 6000 DAQ System";
 
     m.def("runFullDAQ", &runFullDAQ, py::return_value_policy::copy);
-    m.def("seriesInitDAQ", &seriesInitDaq, py::return_value_policy::copy);
+    m.def("seriesInitDaq", &seriesInitDaq, py::return_value_policy::copy);
     m.def("seriesSetDaqSettings", &seriesSetDaqSettings, py::return_value_policy::copy);
     m.def("seriesCollectData", &seriesCollectData, py::return_value_policy::copy);
     m.def("seriesCloseDaq", &seriesCloseDaq, py::return_value_policy::copy);
     m.def("getSerials", &getSerials, py::return_value_policy::copy);
+    m.def("initFunctionGenerator", &seriesInitDaq, py::return_value_policy::copy);
+    m.def("runFunctionGenerator", &runFunctionGenerator, py::return_value_policy::copy);
+    m.def("closeFunctionGenerator", &seriesCloseDaq, py::return_value_policy::copy);
 }
 

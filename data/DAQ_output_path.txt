@@ -1,0 +1,1 @@
+This empty repository is used for the output path of the DAQ files.

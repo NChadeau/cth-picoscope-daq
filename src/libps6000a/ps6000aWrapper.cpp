@@ -48,15 +48,9 @@ uint16_t inputRanges [PICO_X1_PROBE_RANGES] = {	10,
 												5000,
 												10000,
 												20000};
-BOOL        g_ready = FALSE;
-int64_t		g_times [PS6000A_MAX_CHANNELS];
-int16_t     g_timeUnit;
-uint32_t    g_sampleCount;
-uint32_t	g_startIndex;
-int16_t     g_autoStopped;
-int16_t     g_trig = 0;
-uint32_t	g_trigAt = 0;
-int16_t		g_overflow;
+
+BOOL	g_ready = FALSE;
+uint8_t g_multiReady = 0;
 
 void set_info(UNIT * unit)
 {
@@ -167,8 +161,10 @@ void SetVoltages(UNIT *unit, int16_t ranges[4])
 		}
 	}
 
-	if (count == 0) {throw invalid_argument("No active channels");}
-
+	if (count == 0) {
+		printf("No active channels\n");
+		throw invalid_argument("No active channels");
+	}
 
 	SetDefaults(unit);	// Put these changes into effect
 }
@@ -200,17 +196,21 @@ void SetTimebase(UNIT *unit, uint8_t timebase, uint16_t maxChSamples) // Don't n
 }
 
 vector<vector<int16_t*>> SetDataBuffers(UNIT *unit, bitset<4> activeChannels, 
-	vector<uint16_t> samplesPerChannel, uint16_t samplesPreTrigger, 
+	vector<uint16_t> samplesPostPerChannel, int16_t samplesPreTrigger, 
 	uint32_t numWaveforms, uint16_t maxPostSamples)
 {//Using rapid block mode only for now
 	vector<vector<int16_t*>> outBuffers(activeChannels.count());
 
-	uint32_t nMaxSamples = activeChannels.count() * maxPostSamples;
+	uint64_t nMaxSamples = activeChannels.count() * maxPostSamples;
 	uint64_t picoMaxSamples;
-	PICO_STATUS status = ps6000aMemorySegments(unit->handle, numWaveforms, &picoMaxSamples);
+	uint64_t numWaveforms64 = numWaveforms;
+	uint8_t activeCh = 0;
+
+	PICO_STATUS status = ps6000aMemorySegments(unit->handle, numWaveforms64, &picoMaxSamples);
 	if (status != PICO_OK)
 	{
-		throw "Improperly set pico memory segments";
+		printf("PICO status code: %d\n", status);
+		throw runtime_error("Improperly set pico memory segments");
 	}
 	if (picoMaxSamples < nMaxSamples)
 	{
@@ -218,7 +218,7 @@ vector<vector<int16_t*>> SetDataBuffers(UNIT *unit, bitset<4> activeChannels,
 		printf("The program will still run with samples truncated\n"); //XXX: everything here
 		printf("Pester Alex to add partial collections if it becomes a problem\n\n\n");		
 	}
-	ps6000aSetNoOfCaptures(unit->handle, numWaveforms);
+	ps6000aSetNoOfCaptures(unit->handle, numWaveforms64);
 
 	PICO_ACTION action = (PICO_ACTION) (PICO_CLEAR_ALL | PICO_ADD);
 
@@ -226,27 +226,35 @@ vector<vector<int16_t*>> SetDataBuffers(UNIT *unit, bitset<4> activeChannels,
 	{
 		if (!activeChannels.test(i)) {continue;}
 
-		uint16_t chSamples = samplesPreTrigger + samplesPerChannel.at(i);
-		outBuffers.at(i) = vector<int16_t*>(numWaveforms);
-
-		for (int j = 0; j < numWaveforms; j++)
+		if ((samplesPreTrigger + (int) samplesPostPerChannel.at(i)) <= 0)
 		{
-			outBuffers.at(i).at(j) = (int16_t*) calloc(chSamples, sizeof(int16_t));
-			if (outBuffers.at(i).at(j) == NULL)
+			printf("The total number of samples for channel %c is negative!!!\n", 'A' + i);
+			throw runtime_error("Negative total samples");
+		}
+
+		uint32_t chSamples = samplesPreTrigger + samplesPostPerChannel.at(i);
+		outBuffers.at(activeCh) = vector<int16_t*>(numWaveforms);
+
+		for (uint64_t j = 0; j < numWaveforms; j++)
+		{
+			outBuffers.at(activeCh).at(j) = (int16_t*) calloc(chSamples, sizeof(int16_t));
+			if (outBuffers.at(activeCh).at(j) == NULL)
 			{
-				printf("Memory allocation failed: Ch %d, Wf %d\n", i, j);
+				printf("Memory allocation failed: Ch %d, Wf %d\n", i, (int) j);
 			}
 			ps6000aSetDataBuffer(unit->handle, (PICO_CHANNEL) (i),
-				outBuffers.at(i).at(j), chSamples, PICO_INT16_T, j, 
+				outBuffers.at(activeCh).at(j), chSamples, PICO_INT16_T, j, 
 				PICO_RATIO_MODE_RAW, action);
 			action = PICO_ADD;
 		}
+		activeCh++;
+		printf("Channel %c data buffers set\n", char('A') + i);
 	}
 
 	return outBuffers;
 }
 
-void SetSimpleTriggerSettings(UNIT *unit, int16_t threshold, 
+void SetSimpleChannelTrigger(UNIT *unit, int16_t threshold, 
 		PICO_THRESHOLD_DIRECTION dir, PICO_CHANNEL ch)
 {
 	disableTrigger(unit);
@@ -255,9 +263,55 @@ void SetSimpleTriggerSettings(UNIT *unit, int16_t threshold,
 	return;
 }
 
+void SetSimpleAuxTrigger(UNIT *unit)
+{
+	PICO_ACTION						action;
+	PICO_CONDITION 					condition;
+	PICO_DIRECTION 					direction;
+	PICO_TRIGGER_CHANNEL_PROPERTIES properties;
+	PICO_STATUS 					status;
+
+	action = (PICO_ACTION) (PICO_CLEAR_ALL | PICO_ADD);
+
+	condition.source = PICO_TRIGGER_AUX;
+	condition.condition = PICO_CONDITION_TRUE;
+
+	direction.channel = PICO_TRIGGER_AUX;
+	direction.direction = PICO_RISING;
+	direction.thresholdMode = PICO_LEVEL;
+
+	properties.thresholdUpper = 0;
+	properties.thresholdUpperHysteresis = 0;
+	properties.thresholdLower = 0;
+	properties.thresholdLowerHysteresis = 0;
+	properties.channel = PICO_TRIGGER_AUX;
+
+	status = ps6000aSetTriggerChannelConditions(unit->handle, &condition, 1, action);
+	status = ps6000aSetTriggerChannelDirections(unit->handle, &direction, 1);
+	status = ps6000aSetTriggerChannelProperties(unit->handle, &properties, 1, 0, 0);
+}
+
 void disableTrigger(UNIT *unit)
 {
 	ps6000aSetSimpleTrigger(unit->handle, 0, PICO_CHANNEL_A, 0, PICO_RISING, 0, 0);
+	return;
+}
+
+void SetDaqDelay(UNIT *unit, int16_t delay)
+{
+	assert(delay < 0);
+
+	PICO_STATUS status;
+	uint64_t u_delay = delay * -1;
+
+	printf("u_delay: %i\n", (int) u_delay);
+
+	status = ps6000aSetTriggerDelay(unit->handle, u_delay);
+	printf("Status from set delay: %x\n", status);
+	if (status != PICO_OK)
+	{
+		throw runtime_error("Delay failed");
+	}
 	return;
 }
 
@@ -266,7 +320,8 @@ void SetMultiTriggerSettings(UNIT *unit, bitset<5> triggers, vector<int8_t> thre
 {   // NOTE: Ignores external channel
 	assert(thresholds.size() == 4);
 
-	throw "I haven't made this function yet: SetMultiTriggerSettings";
+	printf("I haven't made this function yet: SetMultiTriggerSettings\n");
+	throw runtime_error("I haven't made this function yet: SetMultiTriggerSettings");
 
 	// RECAP FROM LAST TIME: WRITING SIMPLE ONE TRIGGER AND COMBINED SIMPLE TRIGGERS
 	// USING ARRAY OF PS6000_TRIGGER_CONDITIONS STRCTURES
@@ -279,7 +334,8 @@ void SetTriggers(UNIT *unit, bitset<5> triggers, vector<int16_t> chThreshold, in
 	
 	if (triggers.count() == 0)
 	{
-		throw "No set triggers";
+		printf("No set triggers\n");
+		throw runtime_error("No set triggers");
 	}
 	if (triggers.count() == 1)
 	{
@@ -287,20 +343,21 @@ void SetTriggers(UNIT *unit, bitset<5> triggers, vector<int16_t> chThreshold, in
 		{
 			if (triggers.test(i + 1))
 			{
-				SetSimpleTriggerSettings(unit, chThreshold.at(i), (PICO_THRESHOLD_DIRECTION)
+				printf("Setting channel trigger\n");
+				SetSimpleChannelTrigger(unit, chThreshold.at(i), (PICO_THRESHOLD_DIRECTION)
 					((chThreshold.at(i) >= 0) ? PICO_RISING : PICO_FALLING), (PICO_CHANNEL) (PICO_CHANNEL_A + i));
 				break;
 			}
 		}
 		if (triggers.test(0))
 		{
-			SetSimpleTriggerSettings(unit, auxThreshold, (PICO_THRESHOLD_DIRECTION)
-					((auxThreshold >= 0) ? PICO_RISING : PICO_FALLING), (PICO_CHANNEL) (PICO_TRIGGER_AUX));
+			printf("Setting aux trigger\n");
+			SetSimpleAuxTrigger(unit);
 		}
 	}
 	else
 	{
-		printf("multi trig (will fail since unimplemented)\n");
+		printf("multi trig (currently unimplemented)\n");
 		// SetMultiTriggerSettings(unit, triggers, chThreshold, auxThreshold);
 	}
 	return;
@@ -343,19 +400,21 @@ int32_t _kbhit()
         return bytesWaiting;
 }
 
-
-void StartRapidBlock(UNIT *unit, uint16_t preTrigger, uint16_t postTriggerMax,
+void StartRapidBlock(UNIT *unit, int16_t preTrigger, uint16_t postTriggerMax,
 	uint8_t timebase, uint32_t numWaveforms)
 {
 	PICO_STATUS status;
 	double timeIndisposed;
 	uint64_t nCompletedCaptures;
+	uint32_t timebase32 = timebase;
+	int64_t preTrigger64 = max((int16_t) 0, preTrigger);
+	uint64_t postTriggerMax64 = postTriggerMax;
 
 	printf("\n\nStarting DAQ\n\n");
 
 	chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
-	ps6000aRunBlock(unit->handle, preTrigger, postTriggerMax, timebase,
+	ps6000aRunBlock(unit->handle, preTrigger64, postTriggerMax64, timebase32,
 			&timeIndisposed, 0, CallBackBlock, NULL);
 	g_ready = FALSE;
 
@@ -369,11 +428,12 @@ void StartRapidBlock(UNIT *unit, uint16_t preTrigger, uint16_t postTriggerMax,
 		_getch();
 		status = ps6000aStop(unit->handle);
 		status = ps6000aGetNoOfCaptures(unit->handle, &nCompletedCaptures);
+		CloseDevice(unit);
 
 		printf("Rapid capture aborted. %d complete blocks were captured\n", (int) nCompletedCaptures);
 		printf("Early abort writeout not yet supported\n");
 
-		throw "aborted, need to implement early cancellation writeout";
+		throw runtime_error("aborted, need to implement early cancellation writeout");
 
 	}
 
@@ -381,7 +441,7 @@ void StartRapidBlock(UNIT *unit, uint16_t preTrigger, uint16_t postTriggerMax,
 
 	int time = chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
 
-	printf("Time taken: %d us\n", time);
+	printf("Time taken: %d ms\n", time);
 	printf("Trigger rate: %f Hz\n", (double) numWaveforms / time * 1.0e3);
 
 	status = ps6000aGetNoOfCaptures(unit->handle, &nCompletedCaptures);
@@ -391,7 +451,7 @@ void StartRapidBlock(UNIT *unit, uint16_t preTrigger, uint16_t postTriggerMax,
 
 	// Get data
 	status = ps6000aGetValuesBulk(unit->handle, 0, &nSamples, 0, numWaveforms - 1, 
-			1, PICO_RATIO_MODE_RAW, NULL);
+			1, PICO_RATIO_MODE_RAW, NULL); // XXX: Fix this for different sample lengths
 	
 	// ps6000GetValuesTriggerTimeOffsetBulk64
 
@@ -404,9 +464,102 @@ void StartRapidBlock(UNIT *unit, uint16_t preTrigger, uint16_t postTriggerMax,
 	return;
 }
 
+void StartMultiRapidBlock(vector<UNIT *> vecUnit, vector<int16_t> vecPreTrigger,
+	vector<uint16_t> vecPostTriggerMax, vector<uint8_t> vecTimebase,
+	vector<uint32_t> vecNumWaveforms)
+{
+	uint8_t len = vecUnit.size();
+	PICO_STATUS status;
+	vector<double> vecTimeIndisposed(len);
+	vector<uint64_t> vecNCompletedCaptures(len);
+	vector<uint32_t> vecTimebase32(len);
+	vector<int64_t> vecPreTrigger64(len);
+	vector<uint64_t> vecPostTriggerMax64(len);
+
+	g_multiReady = 0;
+
+	for (int i = 0; i < len; i++)
+	{
+		vecTimebase32.at(i) = vecTimebase.at(i);
+		vecPreTrigger64.at(i) = max((int16_t) 0, vecPreTrigger.at(i));
+		vecPostTriggerMax64.at(i) = vecPostTriggerMax.at(i);
+	}
+
+	printf("\n\nStarting DAQ\n\n");
+
+	chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
+	for (int i = 0; i < len; i++)
+	{
+		intptr_t iPt = i;
+		ps6000aRunBlock(vecUnit.at(i)->handle, vecPreTrigger64.at(i), 
+			vecPostTriggerMax64.at(i), vecTimebase32.at(i),
+			&vecTimeIndisposed.at(i), 0, MultiCallBackBlock, (void*) iPt);
+	}
+	
+	while (!(len <= __builtin_popcount(g_multiReady)) && !_kbhit() &&
+		(5 > chrono::duration_cast<std::chrono::seconds>
+		(std::chrono::steady_clock::now() - begin).count())) // XXX: Should change to only cancel if getch == ctrl+c
+	{
+		usleep(0);
+	}
+
+	if (!(len <= __builtin_popcount(g_multiReady)))
+	{
+		_getch();
+		BOOL contAnyways = TRUE;
+		for (int i = 0; i < len; i++)
+		{
+			status = ps6000aStop(vecUnit.at(i)->handle);
+			status = ps6000aGetNoOfCaptures(vecUnit.at(i)->handle, &vecNCompletedCaptures.at(i));
+			printf("Rapid capture aborted.\n");
+			printf("%s: %d complete blocks were captured\n", vecUnit.at(i)->serial, 
+			(int) vecNCompletedCaptures.at(i));
+			if (vecNCompletedCaptures.at(i) < vecNumWaveforms.at(i))
+			{
+				contAnyways = FALSE;
+			}
+		}
+		if (!contAnyways)
+		{
+			printf("Early abort writeout not yet supported\n");
+
+			throw "aborted, need to implement early cancellation writeout";
+		}
+	}
+
+	chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+
+	int time = chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+
+	printf("Time taken: %d ms\n", time);
+	for (int i = 0; i < len; i++)
+	{
+		printf("%s: Trigger rate: %f Hz\n", vecUnit.at(i)->serial,
+			(double) vecNumWaveforms.at(i) / time * 1.0e3);
+
+		status = ps6000aGetNoOfCaptures(vecUnit.at(i)->handle, &vecNCompletedCaptures.at(i));
+
+
+		uint64_t nSamples = vecPreTrigger.at(i) + vecPostTriggerMax.at(i);
+
+		// Get data
+		status = ps6000aGetValuesBulk(vecUnit.at(i)->handle, 0, &nSamples, 0, 
+				vecNumWaveforms.at(i) - 1, 1, PICO_RATIO_MODE_RAW, NULL);
+
+		// Stop
+		status = ps6000aStop(vecUnit.at(i)->handle);
+
+		status = ps6000aMemorySegments(vecUnit.at(i)->handle, 1, &nSamples);
+		status = ps6000aSetNoOfCaptures(vecUnit.at(i)->handle, 1);
+	}
+}
+
 PICO_STATUS OpenDevice(UNIT *unit, int8_t *serial)
 {
 	PICO_STATUS status;
+	int16_t minADCValue = 0;
+	int16_t maxADCValue = 0;
 
 	if (serial == NULL)
 	{
@@ -414,15 +567,16 @@ PICO_STATUS OpenDevice(UNIT *unit, int8_t *serial)
 	}
 	else
 	{
-		printf("Attempting to open\n");
-		status = ps6000aOpenUnit(&(unit->handle), serial, PICO_DR_8BIT);
-		printf("Opened\n");
+		status = ps6000aOpenUnit(&unit->handle, serial, PICO_DR_8BIT);
 	}
 
+	ps6000aGetAdcLimits(unit->handle, PICO_DR_8BIT, &minADCValue, &maxADCValue);
+
+	disableTrigger(unit);
+
+	unit->maxADCValue = maxADCValue;
 	unit->openStatus = status;
 	unit->complete = 1;
-
-	printf("Opened and set values to unit\n");
 
 	return status;
 }
@@ -461,8 +615,6 @@ void findUnit(UNIT *unit, int8_t *serial)
 	}
 
 	PICO_STATUS status = OpenDevice(unit, serial);
-
-	printf("Open status: %d", status);
 
 	if (status == PICO_OK || status == PICO_USB3_0_DEVICE_NON_USB3_0_PORT)
 	{
@@ -549,6 +701,16 @@ void PREF4 CallBackBlock(int16_t handle, PICO_STATUS status, void * pParameter)
 	if (status != PICO_CANCELLED)
 	{
 		g_ready = TRUE;
+	}
+}
+
+void PREF4 MultiCallBackBlock(int16_t handle, PICO_STATUS status, void *pParameter)
+{
+	intptr_t runId = (intptr_t) pParameter;
+	if (status != PICO_CANCELLED)
+	{
+		printf("Run %i has finished\n", (int) runId);
+		g_multiReady |= 1 << runId;
 	}
 }
 

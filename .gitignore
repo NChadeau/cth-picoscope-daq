@@ -1,7 +1,13 @@
 **/.vscode*
 *.so
+*.dat
+*.txt
+*.7z
+**/__pycache__/*
+*.npy
+*.exe
 *.pdf
-npys/
-plots/
+plots/*
+npys/*
 pre-analysed_root_files/
 exec/analysis

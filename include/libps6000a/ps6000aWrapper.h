@@ -46,7 +46,7 @@ typedef enum
 
 typedef struct
 {
-	int16_t handle;
+	int16_t 					handle;
 	MODEL_TYPE					model;
 	int8_t						modelString[8];
 	int8_t						serial[10];
@@ -69,16 +69,24 @@ void SetDefaults(UNIT *unit);
 void SetVoltages(UNIT *unit, int16_t ranges[4]);
 
 std::vector<std::vector<int16_t*>> SetDataBuffers(UNIT *unit, std::bitset<4> activeChannels, 
-	std::vector<uint16_t> samplesPerChannel, uint16_t samplesPreTrigger, 
+	std::vector<uint16_t> samplesPostPerChannel, int16_t samplesPreTrigger, 
 	uint32_t numWaveforms, uint16_t maxPostSamples);
 
 void SetTimebase(UNIT *unit, uint8_t timebase, uint16_t maxChSamples);
 
-void SetSimpleTriggerSettings(UNIT *unit, int16_t threshold, 
+void SetSimpleChannelTrigger(UNIT *unit, int16_t threshold, 
 		PICO_THRESHOLD_DIRECTION dir, PICO_CHANNEL ch);
 
-void StartRapidBlock(UNIT *unit, uint16_t preTrigger, uint16_t postTriggerMax,
+void SetSimpleAuxTrigger(UNIT *unit);
+
+void SetDaqDelay(UNIT *unit, int16_t delay);
+
+void StartRapidBlock(UNIT *unit, int16_t preTrigger, uint16_t postTriggerMax,
 	uint8_t timebase, uint32_t numWaveforms);
+
+void StartMultiRapidBlock(std::vector<UNIT *> vecUnit, std::vector<int16_t> vecPreTrigger,
+	std::vector<uint16_t> vecPostTriggerMax, std::vector<uint8_t> vecTimebase,
+	std::vector<uint32_t> vecNumWaveforms);
 
 void disableTrigger(UNIT *unit);
 
@@ -100,5 +108,7 @@ void findUnit(UNIT *unit, int8_t *serial);
 void enumUnits(int16_t *count, char* outSerials, int16_t *serialLth);
 
 void PREF4 CallBackBlock(int16_t handle, PICO_STATUS status, void * pParameter);
+
+void PREF4 MultiCallBackBlock(int16_t handle, PICO_STATUS status, void *pParameter);
 
 int16_t mv_to_adc(int16_t mv, int16_t rangeIndex, UNIT *unit);

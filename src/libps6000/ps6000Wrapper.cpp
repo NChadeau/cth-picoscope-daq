@@ -51,14 +51,6 @@ uint16_t inputRanges [PS6000_MAX_RANGES] = {	10,
 												20000,
 												50000};
 BOOL        g_ready = FALSE;
-int64_t		g_times [PS6000_MAX_CHANNELS];
-int16_t     g_timeUnit;
-uint32_t    g_sampleCount;
-uint32_t	g_startIndex;
-int16_t     g_autoStopped;
-int16_t     g_trig = 0;
-uint32_t	g_trigAt = 0;
-int16_t		g_overflow;
 
 void set_info(UNIT *unit)
 {
@@ -457,7 +449,7 @@ void SetTimebase(UNIT *unit, uint8_t timebase, uint16_t maxChSamples) // Don't n
 }
 
 vector<vector<int16_t*>> SetDataBuffers(UNIT *unit, bitset<4> activeChannels, 
-	vector<uint16_t> samplesPerChannel, uint16_t samplesPreTrigger, 
+	vector<uint16_t> samplesPostPerChannel, uint16_t samplesPreTrigger, 
 	uint32_t numWaveforms, uint16_t maxPostSamples)
 {//Using rapid block mode only for now
 	vector<vector<int16_t*>> outBuffers(activeChannels.count());
@@ -476,7 +468,7 @@ vector<vector<int16_t*>> SetDataBuffers(UNIT *unit, bitset<4> activeChannels,
 	{
 		if (!activeChannels.test(i)) {continue;}
 
-		uint16_t chSamples = samplesPreTrigger + samplesPerChannel.at(i);
+		uint16_t chSamples = samplesPreTrigger + samplesPostPerChannel.at(i);
 		outBuffers.at(i) = vector<int16_t*>(numWaveforms);
 
 		for (int j = 0; j < numWaveforms; j++)
@@ -650,7 +642,7 @@ void StartRapidBlock(UNIT *unit, uint16_t preTrigger, uint16_t postTriggerMax,
 
 	int time = chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
 
-	printf("Time taken: %d us\n", time);
+	printf("Time taken: %d ms\n", time);
 	printf("Trigger rate: %f Hz\n", (double) numWaveforms / time * 1.0e3);
 
 	status = ps6000GetNoOfCaptures(unit->handle, &nCompletedCaptures);
@@ -825,4 +817,69 @@ void PREF4 CallBackBlock(int16_t handle, PICO_STATUS status, void * pParameter)
 int16_t mv_to_adc(int16_t mv, int16_t ch)
 {
 	return (mv * PS6000_MAX_VALUE) / inputRanges[ch];
+}
+
+void ClearPulseGen(UNIT *unit)
+{
+	PICO_STATUS ps = ps6000SetSigGenBuiltInV2(
+		unit->handle, // Handle
+		0,  // Voltage offset
+		0,	 // PkToPk voltage
+		PS6000_SINE, // Squarewave signal
+		0, // StartFrequency
+		0, // StopFrequency (sweep)
+		0, // Sweep Increment
+		0, // Sweep Time
+		PS6000_UP, // Sweep Mode
+		PS6000_ES_OFF, //Operation mode
+		0, // Cycle number
+		0, // Sweep number
+		PS6000_SIGGEN_RISING, // Trigger type (rising edge)
+		PS6000_SIGGEN_NONE, // Trigger source (AUX)
+		0 // AuxTrigger Voltage threshold (500 mV)
+	);
+}
+
+void PicoSquarePulseGen(UNIT *unit, uint32_t PeakValue, double Width)
+{
+	PeakValue=PeakValue*1e3;
+	Width=Width*1e-9;
+	double Frequency = 1.0/(2*Width);
+	if ((Frequency<=20000000)&&(PeakValue<=2000000))
+	{
+		PICO_STATUS ps = ps6000SetSigGenBuiltInV2(
+			unit->handle, // Handle
+			0,  // Voltage offset
+			PeakValue*2,	 // PkToPk voltage
+			PS6000_SQUARE, // Squarewave signal
+			Frequency, // StartFrequency
+			Frequency, // StopFrequency (sweep)
+			0, // Sweep Increment
+			0, // Sweep Time
+			PS6000_UP, // Sweep Mode
+			PS6000_ES_OFF, //Operation mode
+			1, // Cycle number
+			0, // Sweep number
+			PS6000_SIGGEN_RISING, // Trigger type (rising edge)
+			PS6000_SIGGEN_AUX_IN, // Trigger source (AUX)
+			3277 // AuxTrigger Voltage threshold (500 mV)
+		);
+		
+		if (ps != PICO_OK)
+		{
+		printf("error: %x\n",ps);
+			throw "Error in the PicoSquarePulseGen setup.";
+		}
+		else 
+		{
+			printf("PicoSquarePulseGen is setup:\n");
+			printf("PeakValue value = %f mV, Frequency = %f kHz, Width = %f ns\n", PeakValue*1e-3 , Frequency*1e-3, Width*1e9);
+		}
+	}
+	else
+	{
+		printf("Either PeakValue or Width input for PicoSquarePulseGen is too high!\n");
+		printf("PeakValue value = %f mV, Frequency = %f kHz, Width = %f ns\n", PeakValue*1e-3 , Frequency*1e-3, Width*1e9);
+	}
+
 }

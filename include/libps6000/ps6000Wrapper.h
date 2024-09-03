@@ -109,7 +109,7 @@ void SetDefaults(UNIT *unit);
 void SetVoltages(UNIT *unit, int16_t ranges[4]);
 
 std::vector<std::vector<int16_t*>> SetDataBuffers(UNIT *unit, std::bitset<4> activeChannels, 
-	std::vector<uint16_t> samplesPerChannel, uint16_t samplesPreTrigger, 
+	std::vector<uint16_t> samplesPostPerChannel, uint16_t samplesPreTrigger, 
 	uint32_t numWaveforms, uint16_t maxPostSamples);
 
 void SetTimebase(UNIT *unit, uint8_t timebase, uint16_t maxChSamples);
@@ -149,3 +149,8 @@ void PREF4 CallBackBlock(int16_t handle, PICO_STATUS status, void * pParameter);
 *  (useful for setting trigger thresholds)
 ****************************************************************************/
 int16_t mv_to_adc(int16_t mv, int16_t ch);
+
+void ClearPulseGen(UNIT *unit);
+
+void PicoSquarePulseGen(UNIT *unit, uint32_t PeakValue, double Width);
+

@@ -87,7 +87,7 @@ def readData(f, d):
 
     return data
 
-outFile = r"./example.dat"
+outFile = r"./data/08Jul24_81V_900mV_0kV_3-6-8_IW098-0028.dat"
 
 f = open(outFile, 'rb')
 
@@ -99,5 +99,13 @@ for chData in data:
     print(np.max(chData))
     print(np.shape(chData))
 
-plt.plot(data[0][1000])
+plt.figure()
+for i in range(100):
+    plt.plot(data[0][i], alpha=0.2)
+plt.figure()
+for i in range(100):
+    plt.plot(data[1][i], alpha=0.2)
+plt.figure()
+for i in range(100):
+    plt.plot(data[2][i], alpha=0.2)
 plt.show()
